@@ -2,6 +2,27 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
+function linearRegression(history) {
+  const n = history.length;
+  if (n < 2) return { slope: 0, intercept: history[0] || 0 };
+  
+  const x = Array.from({length: n}, (_, i) => i);
+  const y = history;
+  
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += x[i];
+    sumY += y[i];
+    sumXY += x[i] * y[i];
+    sumX2 += x[i] * x[i];
+  }
+  
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  
+  return { slope, intercept };
+}
+
 function App() {
   const canvasRef = useRef(null);
   const [randomValues, setRandomValues] = useState(5);
@@ -10,12 +31,17 @@ function App() {
   const [temporalSmoothing, setTemporalSmoothing] = useState(0.5);
   const [frameHistory, setFrameHistory] = useState(5);
   const [contrast, setContrast] = useState(0);
+  const [regressionWeight, setRegressionWeight] = useState(0.5);
   const animationRef = useRef(null);
   const lastUpdateRef = useRef(0);
   
   // Create circular buffer for frame history
   const historyBufferRef = useRef([]);
   const historyIndexRef = useRef(0);
+  
+  // Create cell-wise history for regression
+  const cellHistoryRef = useRef(Array(10000).fill().map(() => []));
+  const MAX_CELL_HISTORY = 20;
   
   useEffect(() => {
     // Initialize or resize history buffer when frameHistory changes
@@ -61,13 +87,36 @@ function App() {
               values[6] + values[7] + values[8]) * neighborWeight;
     };
 
+    const predictNextValue = (index) => {
+      const history = cellHistoryRef.current[index];
+      if (history.length < 2) return history[history.length - 1] || 0;
+      
+      const { slope, intercept } = linearRegression(history);
+      return slope * history.length + intercept;
+    };
+
     const blendWithHistory = (current) => {
       const result = new Float32Array(100 * 100);
       const historyWeight = temporalSmoothing / frameHistory;
       const currentWeight = 1 - temporalSmoothing;
       
       for (let i = 0; i < 10000; i++) {
-        result[i] = current[i] * currentWeight;
+        // Update cell history
+        const cellHistory = cellHistoryRef.current[i];
+        cellHistory.push(current[i]);
+        if (cellHistory.length > MAX_CELL_HISTORY) {
+          cellHistory.shift();
+        }
+        
+        // Predict next value using regression
+        const predicted = predictNextValue(i);
+        
+        // Blend current value with prediction
+        const blendedCurrent = current[i] * (1 - regressionWeight) + 
+                             predicted * regressionWeight;
+        
+        // Blend with temporal history
+        result[i] = blendedCurrent * currentWeight;
         for (let f = 0; f < frameHistory; f++) {
           result[i] += historyBufferRef.current[f][i] * historyWeight;
         }
@@ -103,7 +152,7 @@ function App() {
         }
       }
 
-      // Blend with history
+      // Blend with history and predictions
       const blendedBuffer = blendWithHistory(spatialBuffer);
       
       // Update history buffer
@@ -111,18 +160,57 @@ function App() {
       historyIndexRef.current = (historyIndexRef.current + 1) % frameHistory;
       
       // Apply contrast and convert to pixel data
+      // First find min and max values for normalization
+      let minValue = Infinity;
+      let maxValue = -Infinity;
       for (let i = 0; i < 10000; i++) {
         let value = blendedBuffer[i];
         value = value - 0.5;
         value = value * Math.exp(contrast);
-        value = Math.max(0, Math.min(1, value + 0.5));
+        value = value + 0.5;
+        minValue = Math.min(minValue, value);
+        maxValue = Math.max(maxValue, value);
+      }
+
+      // Now apply normalization and color mapping
+      const range = maxValue - minValue;
+      for (let i = 0; i < 10000; i++) {
+        let value = blendedBuffer[i];
+        value = value - 0.5;
+        value = value * Math.exp(contrast);
+        value = value + 0.5;
         
-        const brightness = Math.floor(value * 255);
+        // Normalize to [0,1] range
+        value = (value - minValue) / range;
+        
         const pixelIndex = i * 4;
-        data[pixelIndex] = brightness;     // R
-        data[pixelIndex + 1] = brightness; // G
-        data[pixelIndex + 2] = brightness; // B
-        data[pixelIndex + 3] = 255;        // A
+        // Color interpolation
+        if (value < 0.25) {
+          // Black to Red (0.0 - 0.25)
+          const t = value / 0.25;
+          data[pixelIndex] = t * 255;     // R
+          data[pixelIndex + 1] = 0;       // G
+          data[pixelIndex + 2] = 0;       // B
+        } else if (value < 0.5) {
+          // Red to Orange (0.25 - 0.5)
+          const t = (value - 0.25) / 0.25;
+          data[pixelIndex] = 255;         // R
+          data[pixelIndex + 1] = t * 165; // G (orange has G=165)
+          data[pixelIndex + 2] = 0;       // B
+        } else if (value < 0.75) {
+          // Orange to Yellow (0.5 - 0.75)
+          const t = (value - 0.5) / 0.25;
+          data[pixelIndex] = 255;         // R
+          data[pixelIndex + 1] = 165 + (t * (255-165)); // G (from 165 to 255)
+          data[pixelIndex + 2] = 0;       // B
+        } else {
+          // Yellow to White (0.75 - 1.0)
+          const t = (value - 0.75) / 0.25;
+          data[pixelIndex] = 255;         // R
+          data[pixelIndex + 1] = 255;     // G
+          data[pixelIndex + 2] = t * 255; // B
+        }
+        data[pixelIndex + 3] = 255; // A
       }
       
       ctx.putImageData(imageData, 0, 0);
@@ -136,7 +224,7 @@ function App() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, contrast]);
+  }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, contrast, regressionWeight]);
 
   const Slider = ({ label, value, onChange, min, max, step, description }) => (
     <div className="slider-container">
@@ -205,9 +293,8 @@ function App() {
           value={frameHistory}
           onChange={(e) => setFrameHistory(parseInt(e.target.value))}
           min={1}
-          max={10}
+          max={MAX_CELL_HISTORY}
           step={1}
-          description={frameHistory <= 2 ? 'Short' : frameHistory >= 8 ? 'Long' : 'Medium'}
         />
         <Slider
           label="Contrast"
@@ -217,6 +304,15 @@ function App() {
           max={5}
           step={0.1}
           description={contrast < 0 ? 'Soft' : contrast > 3 ? 'Extreme' : contrast > 1 ? 'High' : 'Normal'}
+        />
+        <Slider
+          label="Regression Weight"
+          value={regressionWeight}
+          onChange={(e) => setRegressionWeight(parseFloat(e.target.value))}
+          min={0}
+          max={1}
+          step={0.05}
+          description={regressionWeight < 0.3 ? 'Light' : regressionWeight > 0.7 ? 'Heavy' : 'Balanced'}
         />
       </div>
     </div>
