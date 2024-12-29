@@ -39,7 +39,7 @@ function linearRegression(history: number[]): RegressionResult {
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [randomValues, setRandomValues] = useState(5);
+  const [randomValues, setRandomValues] = useState(1);
   const [speed, setSpeed] = useState(1);
   const [spatialSmoothing, setSpatialSmoothing] = useState(0.5);
   const [temporalSmoothing, setTemporalSmoothing] = useState(0.5);
@@ -55,7 +55,7 @@ function App() {
   
   // Create cell-wise history for regression
   const cellHistoryRef = useRef<number[][]>(Array(10000).fill(null).map(() => []));
-  const MAX_CELL_HISTORY = 20;
+  const MAX_CELL_HISTORY = 100;
 
   // Rest of the component remains the same, just add type annotations where TypeScript inference needs help
 
@@ -270,14 +270,30 @@ function App() {
     };
   }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, contrast, regressionWeight]);
 
+  const resetSimulation = () => {
+    // Clear history buffers
+    historyBufferRef.current = Array(frameHistory)
+      .fill(null)
+      .map(() => new Float32Array(100 * 100).fill(0));
+    historyIndexRef.current = 0;
+    
+    // Clear cell history
+    cellHistoryRef.current = Array(10000).fill(null).map(() => []);
+  };
+
   return (
     <div className="container">
-      <canvas
-        ref={canvasRef}
-        width={100}
-        height={100}
-        className="canvas"
-      />
+      <div className="canvas-container">
+        <canvas
+          ref={canvasRef}
+          width={100}
+          height={100}
+          className="canvas"
+        />
+        <button className="reset-button" onClick={resetSimulation}>
+          Reset
+        </button>
+      </div>
       <div className="controls">
         <Slider
           label="Random Values"
