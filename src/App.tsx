@@ -1,8 +1,22 @@
-// src/App.jsx
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import './App.css'
 
-function linearRegression(history) {
+interface SliderProps {
+  label: string;
+  value: number;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  min: number;
+  max: number;
+  step: number;
+  description?: string;
+}
+
+interface RegressionResult {
+  slope: number;
+  intercept: number;
+}
+
+function linearRegression(history: number[]): RegressionResult {
   const n = history.length;
   if (n < 2) return { slope: 0, intercept: history[0] || 0 };
   
@@ -24,7 +38,7 @@ function linearRegression(history) {
 }
 
 function App() {
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [randomValues, setRandomValues] = useState(5);
   const [speed, setSpeed] = useState(1);
   const [spatialSmoothing, setSpatialSmoothing] = useState(0.5);
@@ -32,40 +46,63 @@ function App() {
   const [frameHistory, setFrameHistory] = useState(5);
   const [contrast, setContrast] = useState(0);
   const [regressionWeight, setRegressionWeight] = useState(0.5);
-  const animationRef = useRef(null);
+  const animationRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
   
   // Create circular buffer for frame history
-  const historyBufferRef = useRef([]);
+  const historyBufferRef = useRef<Float32Array[]>([]);
   const historyIndexRef = useRef(0);
   
   // Create cell-wise history for regression
-  const cellHistoryRef = useRef(Array(10000).fill().map(() => []));
+  const cellHistoryRef = useRef<number[][]>(Array(10000).fill(null).map(() => []));
   const MAX_CELL_HISTORY = 20;
-  
+
+  // Rest of the component remains the same, just add type annotations where TypeScript inference needs help
+
+  const Slider: React.FC<SliderProps> = ({ label, value, onChange, min, max, step, description }) => (
+    <div className="slider-container">
+      <div className="slider-header">
+        <span>{label}: {typeof value === 'number' ? value.toFixed(1) : value}</span>
+        <span>{description}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  );
+
   useEffect(() => {
     // Initialize or resize history buffer when frameHistory changes
     historyBufferRef.current = Array(frameHistory)
-      .fill()
+      .fill(null)
       .map(() => new Float32Array(100 * 100).fill(0));
     historyIndexRef.current = 0;
   }, [frameHistory]);
-  
+
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
     const imageData = ctx.createImageData(100, 100);
     const data = imageData.data;
     const tempBuffer = new Float32Array(100 * 100);
     const spatialBuffer = new Float32Array(100 * 100);
     
-    const getWrappedValue = (buffer, x, y) => {
+    const getWrappedValue = (buffer: Float32Array, x: number, y: number): number => {
       const wrappedX = (x + 100) % 100;
       const wrappedY = (y + 100) % 100;
       return buffer[wrappedY * 100 + wrappedX];
     };
 
-    const getSmoothNeighborhood = (buffer, x, y) => {
+    const getSmoothNeighborhood = (buffer: Float32Array, x: number, y: number): number => {
       const values = [
         getWrappedValue(buffer, x-1, y-1),
         getWrappedValue(buffer, x, y-1),
@@ -87,7 +124,7 @@ function App() {
               values[6] + values[7] + values[8]) * neighborWeight;
     };
 
-    const predictNextValue = (index) => {
+    const predictNextValue = (index: number): number => {
       const history = cellHistoryRef.current[index];
       if (history.length < 2) return history[history.length - 1] || 0;
       
@@ -95,7 +132,12 @@ function App() {
       return slope * history.length + intercept;
     };
 
-    const blendWithHistory = (current) => {
+    /**
+     * Blend the current value with the history
+     * @param current - The current value
+     * @returns The blended value
+     */
+    const blendWithHistory = (current: Float32Array): Float32Array => {
       const result = new Float32Array(100 * 100);
       const historyWeight = temporalSmoothing / frameHistory;
       const currentWeight = 1 - temporalSmoothing;
@@ -111,9 +153,12 @@ function App() {
         // Predict next value using regression
         const predicted = predictNextValue(i);
         
-        // Blend current value with prediction
-        const blendedCurrent = current[i] * (1 - regressionWeight) + 
-                             predicted * regressionWeight;
+        // Calculate weighted contributions
+        const currentContribution = current[i] * (1 - regressionWeight);
+        const predictionContribution = predicted * regressionWeight;
+
+        // Combine current value with regression prediction
+        const blendedCurrent = currentContribution + predictionContribution;
         
         // Blend with temporal history
         result[i] = blendedCurrent * currentWeight;
@@ -125,7 +170,7 @@ function App() {
       return result;
     };
     
-    const animate = (timestamp) => {
+    const animate = (timestamp: number): void => {
       if (timestamp - lastUpdateRef.current < 16.67 / speed) {
         animationRef.current = requestAnimationFrame(animate);
         return;
@@ -160,7 +205,6 @@ function App() {
       historyIndexRef.current = (historyIndexRef.current + 1) % frameHistory;
       
       // Apply contrast and convert to pixel data
-      // First find min and max values for normalization
       let minValue = Infinity;
       let maxValue = -Infinity;
       for (let i = 0; i < 10000; i++) {
@@ -226,23 +270,6 @@ function App() {
     };
   }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, contrast, regressionWeight]);
 
-  const Slider = ({ label, value, onChange, min, max, step, description }) => (
-    <div className="slider-container">
-      <div className="slider-header">
-        <span>{label}: {typeof value === 'number' ? value.toFixed(1) : value}</span>
-        <span>{description}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={onChange}
-      />
-    </div>
-  );
-  
   return (
     <div className="container">
       <canvas
@@ -316,7 +343,7 @@ function App() {
         />
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App 
