@@ -18,18 +18,16 @@ interface Settings {
   spatialSmoothing: number;
   temporalSmoothing: number;
   frameHistory: number;
-  contrast: number;
   regressionWeight: number;
 }
 
-const MAX_CELL_HISTORY = 100;
-const INITIAL_GRID_SIZE = 100;
+const MAX_CELL_HISTORY = 30;
+const INITIAL_GRID_SIZE = 150;
 const INITIAL_FRAME_HISTORY = 5;
-const INITIAL_SPEED = 1;
-const INITIAL_SPATIAL_SMOOTHING = 0.5;
-const INITIAL_TEMPORAL_SMOOTHING = 0.5;
-const INITIAL_CONTRAST = 0;
-const INITIAL_REGRESSION_WEIGHT = 0.5;
+const INITIAL_SPEED = 0.7;
+const INITIAL_SPATIAL_SMOOTHING = 0.8;
+const INITIAL_TEMPORAL_SMOOTHING = 0.7;
+const INITIAL_REGRESSION_WEIGHT = 0.8;
 const INITIAL_RANDOM_VALUES = 1; // For bell curve, 1 is uniform
 
 function App() {
@@ -39,7 +37,6 @@ function App() {
   const [spatialSmoothing, setSpatialSmoothing] = useState(INITIAL_SPATIAL_SMOOTHING);
   const [temporalSmoothing, setTemporalSmoothing] = useState(INITIAL_TEMPORAL_SMOOTHING);
   const [frameHistory, setFrameHistory] = useState(INITIAL_FRAME_HISTORY);
-  const [contrast, setContrast] = useState(INITIAL_CONTRAST);
   const [regressionWeight, setRegressionWeight] = useState(INITIAL_REGRESSION_WEIGHT);
   const animationRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
@@ -99,7 +96,7 @@ function App() {
 
       // Get image data from grid
       const imageData = new ImageData(
-        gridRef.current.getImageData(contrast, true),
+        gridRef.current.getImageData(true),
         gridRef.current.dimensions.width,
         gridRef.current.dimensions.height
       );
@@ -114,7 +111,7 @@ function App() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, contrast, regressionWeight]);
+  }, [randomValues, speed, spatialSmoothing, temporalSmoothing, frameHistory, regressionWeight]);
 
   const resetSimulation = () => {
     gridRef.current.reset(frameHistory);
@@ -127,7 +124,6 @@ function App() {
       spatialSmoothing,
       temporalSmoothing,
       frameHistory,
-      contrast,
       regressionWeight
     };
     return JSON.stringify(settings, null, 2);
@@ -163,7 +159,6 @@ function App() {
           min={1}
           max={10}
           step={1}
-          description={randomValues === 1 ? 'Uniform' : 'More Normal'}
         />
         <Slider
           label="Animation Speed"
@@ -172,7 +167,6 @@ function App() {
           min={0.1}
           max={3}
           step={0.1}
-          description={speed === 0.1 ? 'Slow' : speed >= 2 ? 'Fast' : 'Normal'}
         />
         <Slider
           label="Spatial Smoothing"
@@ -181,7 +175,6 @@ function App() {
           min={0}
           max={0.95}
           step={0.05}
-          description={spatialSmoothing < 0.3 ? 'Sharp' : spatialSmoothing > 0.7 ? 'Very Smooth' : 'Smooth'}
         />
         <Slider
           label="Temporal Smoothing"
@@ -190,7 +183,6 @@ function App() {
           min={0}
           max={0.95}
           step={0.05}
-          description={temporalSmoothing < 0.3 ? 'Rapid' : temporalSmoothing > 0.7 ? 'Very Slow' : 'Smooth'}
         />
         <Slider
           label="History Frames"
@@ -201,22 +193,12 @@ function App() {
           step={1}
         />
         <Slider
-          label="Contrast"
-          value={contrast}
-          onChange={(e) => setContrast(parseFloat(e.target.value))}
-          min={-2}
-          max={5}
-          step={0.1}
-          description={contrast < 0 ? 'Soft' : contrast > 3 ? 'Extreme' : contrast > 1 ? 'High' : 'Normal'}
-        />
-        <Slider
           label="Regression Weight"
           value={regressionWeight}
           onChange={(e) => setRegressionWeight(parseFloat(e.target.value))}
           min={0}
           max={1}
           step={0.05}
-          description={regressionWeight < 0.3 ? 'Light' : regressionWeight > 0.7 ? 'Heavy' : 'Balanced'}
         />
         <div className="settings-share">
           <div className="settings-header">
@@ -224,6 +206,7 @@ function App() {
             <button onClick={copySettings}>Copy Settings</button>
           </div>
           <textarea
+            style={{display: 'none'}}
             readOnly
             value={getSettingsString()}
             className="settings-display"
