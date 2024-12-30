@@ -96,7 +96,7 @@ function App() {
 
       // Get image data from grid
       const imageData = new ImageData(
-        gridRef.current.getImageData(true),
+        gridRef.current.getImageData(),
         gridRef.current.dimensions.width,
         gridRef.current.dimensions.height
       );
